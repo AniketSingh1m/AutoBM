@@ -1,0 +1,52 @@
+name: Auto Merge br2 into br1 and main
+
+on:
+  pull_request:
+    branches:
+      - br1
+    types:
+      - opened
+      - synchronize
+
+# Define global permissions for all jobs
+permissions:
+  pull-requests: write  # Gives write access to pull requests (needed for merging)
+  contents: write        # Gives write access to repository contents
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.ref == 'br2'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Auto merge PR if author is correct
+        uses: actions/github-script@v6
+        id: merge_br1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            const allowedAuthor = 'AniketSingh1m';  // Replace with allowed GitHub username
+
+            if (pr.head.ref === 'br2' && pr.base.ref === 'br1' && pr.user.login === allowedAuthor) {
+              await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                merge_method: 'merge',
+              });
+              console.log(`PR #${pr.number} merged into br1 successfully.`);
+              return { merged: true };  // Return a flag indicating success
+            } else {
+              console.log('PR not merged: either the branch or author did not match.');
+              return { merged: false }; // Return a flag indicating failure
+            }
+
+      - name: Merge br2 into main if br1 merge was successful
+        if: steps.merge_br1.outputs.merged == 'true'
+        run: |
+          git checkout main
+          git merge --no-ff br2
+          git push origin main
